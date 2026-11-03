@@ -1,0 +1,6 @@
+{
+  "name": "Rexon",
+  "description": "Production community gatekeeper and resident management suite with real-time visitor authorization, SOS emergency triggers, digital gatepasses, and society operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

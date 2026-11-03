@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Rexon Resident</string>
+    <string name="app_name_guard">Rexon Guard</string>
+    <string name="app_name_resident">Rexon Resident</string>
+</resources>

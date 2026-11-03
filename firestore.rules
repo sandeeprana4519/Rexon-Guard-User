@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isGuard() {
+      return isAuthenticated() && request.auth.token.role == 'guard';
+    }
+
+    function isResident() {
+      return isAuthenticated() && (request.auth.token.role == 'owner' || request.auth.token.role == 'tenant');
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.role == 'admin';
+    }
+
+    function isFlatResident(wing, flat) {
+      return isResident() && request.auth.token.wing == wing && request.auth.token.flatNumber == flat;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Guards Collection
+    match /guards/{guardId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (isGuard() && request.auth.uid == guardId);
+    }
+
+    // Gate Logs Collection (Real-time synchronization between Guard and Resident)
+    match /gate_logs/{logId} {
+      // Guards can read all logs; residents can read logs destined for their flat
+      allow read: if isGuard() || isAdmin() || (isResident() && resource.data.wing == request.auth.token.wing && resource.data.flatNumber == request.auth.token.flatNumber);
+      
+      // Guards can create new entry logs
+      allow create: if isGuard() || isAdmin();
+      
+      // Guards can update entry/exit status; residents can update status between WAITING -> INSIDE or DENIED for their flat
+      allow update: if isGuard() || isAdmin() || 
+        (isResident() && resource.data.wing == request.auth.token.wing && resource.data.flatNumber == request.auth.token.flatNumber &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']));
+         
+      allow delete: if isAdmin();
+    }
+
+    // Pre-Approvals & Digital GatePasses
+    match /pre_approvals/{passId} {
+      // Residents can create and view pre-approvals for their flat
+      allow read: if isGuard() || isAdmin() || (isResident() && resource.data.wing == request.auth.token.wing && resource.data.flatNumber == request.auth.token.flatNumber);
+      allow create: if isResident() && request.resource.data.wing == request.auth.token.wing && request.resource.data.flatNumber == request.auth.token.flatNumber;
+      allow update: if (isGuard() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isUsed', 'usedAt'])) ||
+                      (isResident() && resource.data.wing == request.auth.token.wing && resource.data.flatNumber == request.auth.token.flatNumber);
+      allow delete: if isResident() && resource.data.wing == request.auth.token.wing && resource.data.flatNumber == request.auth.token.flatNumber;
+    }
+
+    // Emergency Security Alerts (SOS)
+    match /security_alerts/{alertId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isGuard() || isAdmin();
+    }
+
+    // Guard Messages & Instruction Board
+    match /guard_messages/{msgId} {
+      allow read: if isGuard() || isAdmin() || (isResident() && resource.data.senderId == request.auth.uid);
+      allow create: if isResident();
+      allow update: if isGuard() || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Service Orders
+    match /service_orders/{orderId} {
+      allow read, create: if isAuthenticated();
+      allow update: if isAdmin() || (isResident() && resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // HelpDesk Tickets
+    match /helpdesk_tickets/{ticketId} {
+      allow read: if isAuthenticated();
+      allow create: if isResident();
+      allow update: if isAdmin() || (isResident() && resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // Payments & Invoices
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || (isResident() && resource.data.flatNumber == request.auth.token.flatNumber);
+      allow write: if isAdmin();
+      allow update: if isResident() && resource.data.flatNumber == request.auth.token.flatNumber &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'transactionId', 'paidDate']);
+    }
+  }
+}
